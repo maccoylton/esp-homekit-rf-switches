@@ -6,10 +6,17 @@
 	objectVersion = 46;
 	objects = {
 
+/* Begin PBXFileReference section */
+		558C861B228A152F007978E3 /* src */ = {isa = PBXFileReference; lastKnownFileType = folder; path = src; sourceTree = "<group>"; };
+		558C861C228A1549007978E3 /* components */ = {isa = PBXFileReference; lastKnownFileType = folder; path = components; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
 /* Begin PBXGroup section */
 		558C860E2289D2F6007978E3 = {
 			isa = PBXGroup;
 			children = (
+				558C861C228A1549007978E3 /* components */,
+				558C861B228A152F007978E3 /* src */,
 			);
 			sourceTree = "<group>";
 		};
@@ -23,6 +30,7 @@
 			buildPhases = (
 			);
 			buildToolPath = /usr/bin/make;
+			buildWorkingDirectory = "/Volumes/case-sensitive/esp-homekit-rf-switches/src";
 			dependencies = (
 			);
 			name = "esp-homekit-rf-switches";
@@ -146,6 +154,7 @@
 		558C86172289D2F6007978E3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BIN_PATH = "/volumes/case-sensitive/esp-open-sdk/ESP8266_RTOS_SDK/bin";
 				DEBUGGING_SYMBOLS = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = BPHS6ZKLL9;
@@ -153,18 +162,23 @@
 				GCC_OPTIMIZATION_LEVEL = 0;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
+				PATH = "/volumes/case-sensitive/esp-open-sdk/xtensa-lx106-elf/bin:/usr/local/opt/gnu-sed/bin:$PATH";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDK_PATH = "/volumes/case-sensitive/esp-open-rtos";
 			};
 			name = Debug;
 		};
 		558C86182289D2F6007978E3 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BIN_PATH = "/volumes/case-sensitive/esp-open-sdk/ESP8266_RTOS_SDK/bin";
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = BPHS6ZKLL9;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
+				PATH = "/volumes/case-sensitive/esp-open-sdk/xtensa-lx106-elf/bin:/usr/local/opt/gnu-sed/bin:$PATH";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDK_PATH = "/volumes/case-sensitive/esp-open-rtos";
 			};
 			name = Release;
 		};

@@ -4,7 +4,7 @@ EXTRA_COMPONENTS = \
 	extras/dht \
 	extras/http-parser \
 	extras/rboot-ota \
-    $(abspath ../components/rf433) \
+    $(abspath ../components/rf433mhz) \
     $(abspath ../components/esp-wolfssl) \
 	$(abspath ../components/esp-cjson) \
 	$(abspath ../components/esp-homekit)\

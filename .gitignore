@@ -1,0 +1,5 @@
+esp-homekit-rf-switches.xcodeproj/
+build/
+firmware/
+src/.DS_Store
+.DS_Store
