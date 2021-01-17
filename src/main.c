@@ -23,13 +23,21 @@
 
 #include <homekit/homekit.h>
 #include <homekit/characteristics.h>
+#include <wifi_config.h>
 
 //rf 433mhz
 #include <rf_433mhz.h>
 
 
-#include <button.h>
+#include <adv_button.h>
 #include <led_codes.h>
+#include <udplogger.h>
+#include <custom_characteristics.h>
+#include <shared_functions.h>
+
+
+void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context);
+
 
 // add this section to make your device OTA capable
 // create the extra characteristic &ota_trigger, at the end of the primary service (before the NULL)
@@ -38,6 +46,8 @@
 
 #include <ota-api.h>
 
+
+
 homekit_characteristic_t ota_trigger  = API_OTA_TRIGGER;
 homekit_characteristic_t name         = HOMEKIT_CHARACTERISTIC_(NAME, DEVICE_NAME);
 homekit_characteristic_t manufacturer = HOMEKIT_CHARACTERISTIC_(MANUFACTURER,  DEVICE_MANUFACTURER);
@@ -45,6 +55,9 @@ homekit_characteristic_t serial       = HOMEKIT_CHARACTERISTIC_(SERIAL_NUMBER, D
 homekit_characteristic_t model        = HOMEKIT_CHARACTERISTIC_(MODEL,         DEVICE_MODEL);
 homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISION,  FW_VERSION);
 
+homekit_characteristic_t switch_on = HOMEKIT_CHARACTERISTIC_(
+                                                             ON, false, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(switch_on_callback)
+                                                             );
 
 
 #define TRANSMITTER_PIN 5
@@ -64,6 +77,8 @@ int led_off_value=0; /*set to o when botton is connect to gound, 1 when LED is p
 
 reciever_433mhz* reciever;
 QueueHandle_t decode_queue;
+
+
 
 void rf433mhz_transmit(void *pvParameters) {
     gpio_enable(TRANSMITTER_PIN, GPIO_OUTPUT);
@@ -129,91 +144,30 @@ void rf433mhz_recieve(void *pvParameters) {
 }
 
 
-
-
-void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context);
-
-void button_callback(uint8_t gpio, button_event_t event);
-
-void relay_write(bool on) {
-    //gpio_write(relay_gpio, on ? 1 : 0);
-}
-
-void led_write(bool on) {
-    gpio_write(LED_GPIO, on ? 0 : 1);
-}
-
-void reset_configuration_task() {
-    //Flash the LED first before we start the reset
-    led_code (LED_GPIO, WIFI_CONFIG_RESET);
-    printf("Resetting Wifi Config\n");
-    
-    //    wifi_config_reset();
-    
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    
-    printf("Resetting HomeKit Config\n");
-    
-    homekit_server_reset();
-    
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    
-    printf("Restarting\n");
-    
-    sdk_system_restart();
-    
-    vTaskDelete(NULL);
-}
-
-void reset_configuration() {
-    printf("Resetting Sonoff configuration\n");
-    xTaskCreate(reset_configuration_task, "Reset configuration", 256, NULL, 2, NULL);
-}
-
-homekit_characteristic_t switch_on = HOMEKIT_CHARACTERISTIC_(
-                                                             ON, false, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(switch_on_callback)
-                                                             );
-
 void gpio_init() {
     gpio_enable(LED_GPIO, GPIO_OUTPUT);
-    led_write(false);
+    led_write(false, LED_GPIO);
     gpio_enable(relay_gpio, GPIO_OUTPUT);
-    relay_write(switch_on.value.bool_value);
+    relay_write(switch_on.value.bool_value, relay_gpio);
 }
+
 
 void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context) {
-    relay_write(switch_on.value.bool_value);
-    led_write(switch_on.value.bool_value);
+    relay_write(switch_on.value.bool_value, relay_gpio);
+    led_write(switch_on.value.bool_value, LED_GPIO );
 }
 
-void button_callback(uint8_t gpio, button_event_t event) {
-    switch (event) {
-        case button_event_single_press:
-            printf("Toggling relay\n");
-            switch_on.value.bool_value = !switch_on.value.bool_value;
-            relay_write(switch_on.value.bool_value);
-            led_write(switch_on.value.bool_value);
-            homekit_characteristic_notify(&switch_on, switch_on.value);
-            break;
-        case button_event_long_press:
-            reset_configuration();
-            break;
-        default:
-            printf("Unknown button event: %d\n", event);
-    }
+
+void button_callback(uint8_t gpio, void* args, const uint8_t param) {
+    
+    printf("Toggling relay\n");
+    switch_on.value.bool_value = !switch_on.value.bool_value;
+    relay_write(switch_on.value.bool_value, relay_gpio);
+    led_write(switch_on.value.bool_value, LED_GPIO);
+    homekit_characteristic_notify(&switch_on, switch_on.value);
+    
 }
 
-void switch_identify_task(void *_args) {
-    // We identify the Sonoff by Flashing it's LED.
-    led_code( LED_GPIO, IDENTIFY_ACCESSORY);
-    led_write(switch_on.value.bool_value);
-    vTaskDelete(NULL);
-}
-
-void switch_identify(homekit_value_t _value) {
-    printf("Switch identify\n");
-    xTaskCreate(switch_identify_task, "Switch identify", 128, NULL, 2, NULL);
-}
 
 
 homekit_accessory_t *accessories[] = {
@@ -224,7 +178,7 @@ homekit_accessory_t *accessories[] = {
             &serial,
             &model,
             &revision,
-            HOMEKIT_CHARACTERISTIC(IDENTIFY, switch_identify),
+            HOMEKIT_CHARACTERISTIC(IDENTIFY, identify),
             NULL
         }),
         HOMEKIT_SERVICE(SWITCH, .primary=true, .characteristics=(homekit_characteristic_t*[]){
@@ -240,58 +194,64 @@ homekit_accessory_t *accessories[] = {
 
 homekit_server_config_t config = {
     .accessories = accessories,
-    .password = "111-11-111"
+    .password = "111-11-111",
+    .setupId = "1234",
+    .on_event = on_homekit_event
 };
 
-void create_accessory_name() {
-    
-    int serialLength = snprintf(NULL, 0, "%d", sdk_system_get_chip_id());
-    
-    char *serialNumberValue = malloc(serialLength + 1);
-    
-    snprintf(serialNumberValue, serialLength + 1, "%d", sdk_system_get_chip_id());
-    
-    int name_len = snprintf(NULL, 0, "%s-%s-%s",
-                            DEVICE_NAME,
-                            DEVICE_MODEL,
-                            serialNumberValue);
-    
-    if (name_len > 63) {
-        name_len = 63;
-    }
-    
-    char *name_value = malloc(name_len + 1);
-    
-    snprintf(name_value, name_len + 1, "%s-%s-%s",
-             DEVICE_NAME, DEVICE_MODEL, serialNumberValue);
-    
-    
-    name.value = HOMEKIT_STRING(name_value);
-    serial.value = name.value;
+
+void recover_from_reset (int reason){
+    /* called if we restarted abnormally */
+    printf ("%s: reason %d\n", __func__, reason);
 }
 
+void save_characteristics ( ){
+    
+    printf ("%s:\n", __func__);
+    save_characteristic_to_flash(&wifi_check_interval, wifi_check_interval.value);
+}
+
+
+void accessory_init_not_paired (void) {
+    /* initalise anything you don't want started until wifi and homekit imitialisation is confirmed, but not paired */
+    
+}
+
+void accessory_init (void ){
+    /* initalise anything you don't want started until wifi and pairing is confirmed */
+    
+    //start tasks
+    decode_queue = xQueueCreate(2, sizeof(reciever_433mhz*));
+    xTaskCreate(rf433mhz_transmit, "transmitter_rf", 256, NULL, 1, NULL);
+    xTaskCreate(rf433mhz_recieve, "reciever_rf", 256, NULL, 1, NULL);
+    
+    load_characteristic_from_flash(&wifi_check_interval);
+    homekit_characteristic_notify(&wifi_check_interval, wifi_check_interval.value);
+    
+    adv_button_set_evaluate_delay(10);
+    
+    /* GPIO for button, pull-up resistor, inverted */
+    adv_button_create(button_gpio, true, false);
+    adv_button_register_callback_fn(button_gpio, button_callback, SINGLEPRESS_TYPE, NULL, 0);
+
+    
+    adv_button_create(button_gpio , true, false);
+    adv_button_register_callback_fn(button_gpio, reset_button_callback, VERYLONGPRESS_TYPE, NULL, 0);
+    
+
+    
+}
 
 
 void user_init(void) {
     uart_set_baud(0, 115200);
-    decode_queue = xQueueCreate(2, sizeof(reciever_433mhz*));
     
-    //start tasks
-    xTaskCreate(rf433mhz_transmit, "transmitter_rf", 256, NULL, 1, NULL);
-    xTaskCreate(rf433mhz_recieve, "reciever_rf", 256, NULL, 1, NULL);
-    
+
     gpio_init();
+ 
+    standard_init (&name, &manufacturer, &model, &serial, &revision);
+    gpio_init();
+    wifi_config_init(DEVICE_NAME, NULL, on_wifi_ready);
+
     
-    create_accessory_name();
-    
-    if (button_create(button_gpio, 0, 4000, button_callback)) {
-        printf("Failed to initialize button\n");
-    }
-    
-    int c_hash=ota_read_sysparam(&manufacturer.value.string_value,&serial.value.string_value,
-                                 &model.value.string_value,&revision.value.string_value);
-    if (c_hash==0) c_hash=1;
-    config.accessories[0]->config_number=c_hash;
-    
-    homekit_server_init(&config);
-}
+ }
